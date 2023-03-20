@@ -35,6 +35,16 @@ data "aws_eks_node_group" "node_group" {
   node_group_name = each.value
 }
 
+data "aws_autoscaling_groups" "ec2_node_groups" {
+  // when zeet_cluster_id is given, we can look up self-managed ec2 node groups
+  count = var.zeet_cluster_id != "" ? 1 : 0
+
+  filter {
+    name   = "tag:ZeetClusterId"
+    values = [var.zeet_cluster_id]
+  }
+}
+
 resource "random_id" "topic_id" {
   # 8 hex characters
   byte_length = 4
@@ -42,12 +52,25 @@ resource "random_id" "topic_id" {
 
 locals {
   # traverse eks node groups, collecting all asg names
-  asg_names = flatten([
+  eks_node_group_asg_names = flatten([
     for ng in data.aws_eks_node_group.node_group : [
       for resource in ng.resources : [
         for asg in resource.autoscaling_groups : asg.name
       ]
     ]
   ])
+
+  self_managed_node_group_asg_names = flatten([
+    for ng in data.aws_autoscaling_groups.ec2_node_groups : [
+      ng.names
+    ]
+  ])
+
+  asg_names = toset(
+    concat(
+      local.eks_node_group_asg_names,
+      local.self_managed_node_group_asg_names
+    )
+  )
   topic_suffix = random_id.topic_id.hex
 }
