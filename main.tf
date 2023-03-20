@@ -66,6 +66,11 @@ locals {
     ]
   ])
 
-  asg_names = local.eks_node_group_asg_names + local.self_managed_node_group_asg_names
+  asg_names = toset(
+    concat(
+      local.eks_node_group_asg_names,
+      local.self_managed_node_group_asg_names
+    )
+  )
   topic_suffix = random_id.topic_id.hex
 }
