@@ -6,6 +6,11 @@ resource "aws_sns_topic" "cloudwatch_events" {
   name = "zeet-eks-${var.cluster_name}-cloudwatch-events-${local.topic_suffix}"
 }
 
+resource "aws_sns_topic_policy" "allow_cloudwatch_events" {
+  arn = aws_sns_topic.cloudwatch_events.arn
+  policy = data.aws_iam_policy_document.sns_cloudwatch_events_topic_policy_document.json
+}
+
 resource "aws_sns_topic_subscription" "subscription" {
   endpoint  = var.sns_subscription_endpoint
   protocol  = var.sns_subscription_protocol
@@ -42,6 +47,63 @@ data "aws_autoscaling_groups" "ec2_node_groups" {
   filter {
     name   = "tag:ZeetClusterId"
     values = [var.zeet_cluster_id]
+  }
+}
+
+data "aws_iam_policy_document" "sns_cloudwatch_events_topic_policy_document" {
+  policy_id = "__default_policy_ID"
+
+  statement {
+    actions = [
+      "SNS:Subscribe",
+      "SNS:SetTopicAttributes",
+      "SNS:RemovePermission",
+      "SNS:Receive",
+      "SNS:Publish",
+      "SNS:ListSubscriptionsByTopic",
+      "SNS:GetTopicAttributes",
+      "SNS:DeleteTopic",
+      "SNS:AddPermission",
+    ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceOwner"
+
+      values = [
+        var.aws_account_id,
+      ]
+    }
+
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["*"]
+    }
+
+    resources = [
+      aws_sns_topic.cloudwatch_events.arn,
+    ]
+
+    sid = "__default_statement_ID"
+  }
+
+  # allow cloudwatch events to publish to this topic
+  # https://docs.aws.amazon.com/AmazonCloudWatch/latest/events/CWE_Troubleshooting.html#NoMessagesPublishedSNS
+  statement {
+    sid = "Allow_Publish_Events"
+    effect = "Allow"
+    principals {
+      identifiers = ["events.amazonaws.com"]
+      type        = "Service"
+    }
+    actions = [
+      "sns:Publish"
+    ]
+    resources = [
+      aws_sns_topic.cloudwatch_events.arn,
+    ]
   }
 }
 
